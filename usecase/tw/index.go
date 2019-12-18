@@ -11,7 +11,7 @@ import (
 )
 
 func GetSchema() []string {
-	fileName := "csv.schema"
+	fileName := "testdata/test.schema"
 	fileBytes, err := ioutil.ReadFile(fileName)
 
 	if err != nil {

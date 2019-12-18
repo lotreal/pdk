@@ -36,3 +36,5 @@ require (
 	golang.org/x/net v0.0.0-20181201002055-351d144fa1fc // indirect
 	gopkg.in/linkedin/goavro.v1 v1.0.5 // indirect
 )
+
+go 1.13

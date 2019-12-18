@@ -11,7 +11,11 @@ import (
 // }
 
 func TestMappingRecord(t *testing.T) {
-	rec := "1001,1000,100,300,10,1576,1238000,100,100,86"
+	bms := tw.GetBitMappers()
+
+	rec := "100,1000,200"
 	record := tw.CsvRecord{Val: rec, Type: '-'}
-	tw.MappingRecord(record)
+	cts, err := tw.MappingRecord(record, bms)
+	t.Log(cts)
+	t.Log(err)
 }

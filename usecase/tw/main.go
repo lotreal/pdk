@@ -284,109 +284,11 @@ type valField struct {
 }
 
 func (m *Main) parseMapAndPost(records <-chan CsvRecord, num int) {
-Records:
 	for record := range records {
-		fields, ok := record.clean()
-		if !ok {
-			m.skippedRecs.Add(1)
-			continue
-		}
-
-		log.Printf("DM.fields: %s", fields)
-
-		valsToSet := make([]valField, 0)
-		columnsToSet := make([]columnField, 0)
-
-		for _, bm := range m.bms {
-			if len(bm.Fields) != len(bm.Parsers) {
-				// TODO if len(pm.Parsers) == 1, use that for all fields
-				log.Fatalf("parse: BitMapper has different number of fields: %v and parsers: %v", bm.Fields, bm.Parsers)
-			}
-
-			// parse fields into a slice `parsed`
-			parsed := make([]interface{}, 0, len(bm.Fields))
-			for n, fieldnum := range bm.Fields {
-				parser := bm.Parsers[n]
-				if fieldnum >= len(fields) {
-					log.Printf("parse: field index: %v out of range for: %v", fieldnum, fields)
-					m.skippedRecs.Add(1)
-					continue Records
-				}
-				parsedField, err := parser.Parse(fields[fieldnum])
-				if err != nil && fields[fieldnum] == "" {
-					m.skippedRecs.Add(1)
-					continue Records
-				} else if err != nil {
-					log.Printf("parsing: field: %v err: %v bm: %v rec: %v", fields[fieldnum], err, bm, record)
-					m.skippedRecs.Add(1)
-					continue Records
-				}
-				parsed = append(parsed, parsedField)
-			}
-
-			// map those fields to a slice of IDs
-			ids, err := bm.Mapper.ID(parsed...)
-			if err != nil {
-				if err.Error() == "point (0, 0) out of range" {
-					m.nullLocs.Add(1)
-					m.skippedRecs.Add(1)
-					continue Records
-				}
-				if strings.Contains(bm.Field, "grid_id") && strings.Contains(err.Error(), "out of range") {
-					m.badLocs.Add(1)
-					m.skippedRecs.Add(1)
-					continue Records
-				}
-				if bm.Field == "speed_mph" && strings.Contains(err.Error(), "out of range") {
-					m.badSpeeds.Add(1)
-					m.skippedRecs.Add(1)
-					continue Records
-				}
-				if bm.Field == "total_amount_dollars" && strings.Contains(err.Error(), "out of range") {
-					m.badTotalAmnts.Add(1)
-					m.skippedRecs.Add(1)
-					continue Records
-				}
-				if bm.Field == "duration_minutes" && strings.Contains(err.Error(), "out of range") {
-					m.badDurations.Add(1)
-					m.skippedRecs.Add(1)
-					continue Records
-				}
-				if bm.Field == "passenger_count" && strings.Contains(err.Error(), "out of range") {
-					m.badPassCounts.Add(1)
-					m.skippedRecs.Add(1)
-					continue Records
-				}
-				if bm.Field == "dist_miles" && strings.Contains(err.Error(), "out of range") {
-					m.badDist.Add(1)
-					m.skippedRecs.Add(1)
-					continue Records
-				}
-				log.Printf("mapping: bm: %v, err: %v rec: %v", bm, err, record)
-				m.skippedRecs.Add(1)
-				m.badUnknowns.Add(1)
-				continue Records
-			}
-			// begin quick hack to extract cost for setting in a BSI field.
-			if bm.Field == "total_amount_dollars" {
-				cents := parsed[0].(float64) * 100.0
-				if cents > 0 { // guard against bad data.
-					valsToSet = append(valsToSet, valField{Val: int64(cents), Frame: "cost_cents", Field: "cost_cents"})
-				}
-			}
-			// end quick cost hack
-
-			for _, id := range ids {
-				columnsToSet = append(columnsToSet, columnField{Column: uint64(id), Field: bm.Field})
-			}
-		}
-		columnsToSet = append(columnsToSet)
+		columnsToSet, _ := MappingRecord(record, m.bms)
 		columnID := m.nexter.Next()
 		for _, bit := range columnsToSet {
 			m.indexer.AddColumn(bit.Field, columnID, bit.Column)
-		}
-		for _, val := range valsToSet {
-			m.indexer.AddValue(val.Field, columnID, val.Val)
 		}
 	}
 }
@@ -422,12 +324,48 @@ func (c *counter) Get() (ret int64) {
 	return
 }
 
-func MappingRecord(record CsvRecord) error {
+func MappingRecord(record CsvRecord, bms []pdk.ColumnMapper) ([]columnField, error) {
 	fields, ok := record.clean()
 	if !ok {
-		return fmt.Errorf("record %s not valid", record)
+		return nil, fmt.Errorf("record %s not valid", record.Val)
 	}
 
 	log.Printf("DM.fields: %s", fields)
-	return nil
+	columnsToSet := make([]columnField, 0)
+
+	for _, bm := range bms {
+		if len(bm.Fields) != len(bm.Parsers) {
+			// TODO if len(bm.Parsers) == 1, use that for all fields
+			log.Fatalf("parse: BitMapper has different number of fields: %v and parsers: %v", bm.Fields, bm.Parsers)
+		}
+
+		// parse fields into a slice `parsed`
+		parsed := make([]interface{}, 0, len(bm.Fields))
+		for n, fieldnum := range bm.Fields {
+			parser := bm.Parsers[n]
+			if fieldnum >= len(fields) {
+				return nil, fmt.Errorf("parse: field index: %v out of range for: %v", fieldnum, fields)
+			}
+			parsedField, err := parser.Parse(fields[fieldnum])
+			if err != nil && fields[fieldnum] == "" {
+				return nil, errors.Wrap(err, "")
+			} else if err != nil {
+				return nil, fmt.Errorf("parsing: field: %v err: %v bm: %v rec: %v", fields[fieldnum], err, bm, record)
+			}
+			parsed = append(parsed, parsedField)
+		}
+
+		// map those fields to a slice of IDs
+		ids, err := bm.Mapper.ID(parsed...)
+		log.Printf("DM.ids: %v", ids)
+		if err != nil {
+			return nil, fmt.Errorf("mapping: bm: %v, err: %v rec: %v", bm, err, record)
+		}
+
+		for _, id := range ids {
+			columnsToSet = append(columnsToSet, columnField{Column: uint64(id), Field: bm.Field})
+		}
+	}
+	columnsToSet = append(columnsToSet)
+	return columnsToSet, nil
 }
