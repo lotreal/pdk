@@ -37,7 +37,7 @@ import (
 	"testing"
 
 	gopilosa "github.com/pilosa/go-pilosa"
-	"github.com/pilosa/pdk/usecase/taxi"
+	"github.com/pilosa/pdk/usecase/tw"
 	"github.com/pilosa/pilosa/test"
 )
 
@@ -50,7 +50,7 @@ func TestRunMain(t *testing.T) {
 	}
 
 	// run taxi import with testdata
-	main := taxi.NewMain()
+	main := tw.NewMain()
 	main.URLFile = "testdata/urls.txt"
 	main.Index = "taxi"
 	main.Concurrency = 2

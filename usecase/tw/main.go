@@ -35,11 +35,9 @@ type Main struct {
 	BufferSize       int
 	UseReadAll       bool
 
-	indexer   pdk.Indexer
-	urls      []string
-	greenBms  []pdk.ColumnMapper
-	yellowBms []pdk.ColumnMapper
-	ams       []pdk.AttrMapper
+	indexer pdk.Indexer
+	urls    []string
+	bms     []pdk.ColumnMapper
 
 	nexter pdk.INexter
 
@@ -104,7 +102,7 @@ func (m *Main) Run() error {
 	ticker := m.printStats()
 
 	urls := make(chan string, 100)
-	records := make(chan record, 10000)
+	records := make(chan CsvRecord, 10000)
 
 	go func() {
 		for _, url := range m.urls {
@@ -113,10 +111,7 @@ func (m *Main) Run() error {
 		close(urls)
 	}()
 
-	m.greenBms = getBitMappers(greenFields)
-	m.yellowBms = getBitMappers(yellowFields)
-	m.ams = getAttrMappers()
-
+	m.bms = GetBitMappers()
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func() {
@@ -149,6 +144,7 @@ func (m *Main) Run() error {
 	ticker.Stop()
 	// print stats one last time
 	bytes := m.bytesProcessed()
+
 	log.Printf("Rides: %d, Bytes: %s, Records: %v", m.nexter.Last(), pdk.Bytes(bytes), m.totalRecs.Get())
 	log.Printf("Skipped: %v, badLocs: %v, nullLocs: %v, badSpeeds: %v, badTotalAmnts: %v, badDurations: %v, badUnknowns: %v, badPassCounts: %v, badDist: %v", m.skippedRecs.Get(), m.badLocs.Get(), m.nullLocs.Get(), m.badSpeeds.Get(), m.badTotalAmnts.Get(), m.badDurations.Get(), m.badUnknowns.Get(), m.badPassCounts.Get(), m.badDist.Get())
 	return errors.Wrap(err, "closing indexer")
@@ -199,21 +195,14 @@ func getNextURL(urls <-chan string, failedURLs map[string]int) (string, bool) {
 	return url, true
 }
 
-func (m *Main) fetch(urls <-chan string, records chan<- record) {
+func (m *Main) fetch(urls <-chan string, records chan<- CsvRecord) {
 	failedURLs := make(map[string]int)
 	for {
 		url, ok := getNextURL(urls, failedURLs)
 		if !ok {
 			break
 		}
-		var typ rune
-		if strings.Contains(url, "green") {
-			typ = 'g'
-		} else if strings.Contains(url, "yellow") {
-			typ = 'y'
-		} else {
-			typ = 'x'
-		}
+
 		var content io.ReadCloser
 		if strings.HasPrefix(url, "http") {
 			resp, err := http.Get(url)
@@ -255,28 +244,12 @@ func (m *Main) fetch(urls <-chan string, records chan<- record) {
 			scan = bufio.NewScanner(content)
 		}
 
-		// discard header line
-		correctLine := false
-		if scan.Scan() {
-			header := scan.Text()
-			if strings.HasPrefix(header, "vendor_") {
-				correctLine = true
-			}
-		}
 		for scan.Scan() {
 			m.totalRecs.Add(1)
 			rec := scan.Text()
 			m.addBytes(len(rec))
-			if correctLine {
-				// last field needs to be shifted over by 1
-				lastcomma := strings.LastIndex(rec, ",")
-				if lastcomma == -1 {
-					m.skippedRecs.Add(1)
-					continue
-				}
-				rec = rec[:lastcomma] + "," + rec[lastcomma:]
-			}
-			records <- record{Val: rec, Type: typ}
+			log.Printf("DM.rec: %s", rec)
+			records <- CsvRecord{Val: rec, Type: '-'}
 		}
 		err := scan.Err()
 		if err != nil {
@@ -286,12 +259,12 @@ func (m *Main) fetch(urls <-chan string, records chan<- record) {
 	}
 }
 
-type record struct {
+type CsvRecord struct {
 	Type rune
 	Val  string
 }
 
-func (r record) clean() ([]string, bool) {
+func (r CsvRecord) clean() ([]string, bool) {
 	if len(r.Val) == 0 {
 		return nil, false
 	}
@@ -310,8 +283,7 @@ type valField struct {
 	Field string
 }
 
-func (m *Main) parseMapAndPost(records <-chan record, num int) {
-	ug := newUserGetter(num)
+func (m *Main) parseMapAndPost(records <-chan CsvRecord, num int) {
 Records:
 	for record := range records {
 		fields, ok := record.clean()
@@ -319,24 +291,13 @@ Records:
 			m.skippedRecs.Add(1)
 			continue
 		}
-		var bms []pdk.ColumnMapper
-		var cabType uint64
-		if record.Type == 'g' {
-			bms = m.greenBms
-			cabType = 0
-		} else if record.Type == 'y' {
-			bms = m.yellowBms
-			cabType = 1
-		} else {
-			log.Println("unknown record type")
-			m.badUnknowns.Add(1)
-			m.skippedRecs.Add(1)
-			continue
-		}
+
+		log.Printf("DM.fields: %s", fields)
+
 		valsToSet := make([]valField, 0)
 		columnsToSet := make([]columnField, 0)
-		columnsToSet = append(columnsToSet, columnField{Column: cabType, Field: "cab_type"}, columnField{Column: ug.ID(), Field: "user_id"})
-		for _, bm := range bms {
+
+		for _, bm := range m.bms {
 			if len(bm.Fields) != len(bm.Parsers) {
 				// TODO if len(pm.Parsers) == 1, use that for all fields
 				log.Fatalf("parse: BitMapper has different number of fields: %v and parsers: %v", bm.Fields, bm.Parsers)
@@ -430,189 +391,6 @@ Records:
 	}
 }
 
-func getAttrMappers() []pdk.AttrMapper {
-	ams := []pdk.AttrMapper{}
-
-	return ams
-}
-
-func getBitMappers(fields map[string]int) []pdk.ColumnMapper {
-	// map a pair of floats to a grid sector of a rectangular region
-	gm := pdk.GridMapper{
-		Xmin: -74.27,
-		Xmax: -73.69,
-		Xres: 100,
-		Ymin: 40.48,
-		Ymax: 40.93,
-		Yres: 100,
-	}
-
-	elevFloatMapper := pdk.LinearFloatMapper{
-		Min: -32,
-		Max: 195,
-		Res: 46,
-	}
-
-	gfm := pdk.NewGridToFloatMapper(gm, elevFloatMapper, []float64{})
-
-	// map a float according to a custom set of bins
-	// seems like the LFM defined below is more sensible
-	/*
-		fm := pdk.FloatMapper{
-			Buckets: []float64{0, 0.5, 1, 2, 5, 10, 25, 50, 100, 200},
-		}
-	*/
-
-	// this set of bins is equivalent to rounding to nearest int (TODO verify)
-	lfm := pdk.LinearFloatMapper{
-		Min: -0.5,
-		Max: 3600.5,
-		Res: 3601,
-	}
-
-	// map the (pickupTime, dropTime) pair, according to the duration in minutes, binned using `fm`
-	durm := pdk.CustomMapper{
-		Func: func(fields ...interface{}) interface{} {
-			start := fields[0].(time.Time)
-			end := fields[1].(time.Time)
-			return end.Sub(start).Minutes()
-		},
-		Mapper: lfm,
-	}
-
-	// map the (pickupTime, dropTime, dist) triple, according to the speed in mph, binned using `fm`
-	speedm := pdk.CustomMapper{
-		Func: func(fields ...interface{}) interface{} {
-			start := fields[0].(time.Time)
-			end := fields[1].(time.Time)
-			dist := fields[2].(float64)
-			return dist / end.Sub(start).Hours()
-		},
-		Mapper: lfm,
-	}
-
-	tp := pdk.TimeParser{Layout: "2006-01-02 15:04:05"}
-
-	bms := []pdk.ColumnMapper{
-		pdk.ColumnMapper{
-			Field:   "passenger_count",
-			Mapper:  pdk.IntMapper{Min: 0, Max: 9},
-			Parsers: []pdk.Parser{pdk.IntParser{}},
-			Fields:  []int{fields["passenger_count"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "total_amount_dollars",
-			Mapper:  lfm,
-			Parsers: []pdk.Parser{pdk.FloatParser{}},
-			Fields:  []int{fields["total_amount"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "pickup_time",
-			Mapper:  pdk.TimeOfDayMapper{Res: 48},
-			Parsers: []pdk.Parser{tp},
-			Fields:  []int{fields["pickup_datetime"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "pickup_day",
-			Mapper:  pdk.DayOfWeekMapper{},
-			Parsers: []pdk.Parser{tp},
-			Fields:  []int{fields["pickup_datetime"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "pickup_mday",
-			Mapper:  pdk.DayOfMonthMapper{},
-			Parsers: []pdk.Parser{tp},
-			Fields:  []int{fields["pickup_datetime"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "pickup_month",
-			Mapper:  pdk.MonthMapper{},
-			Parsers: []pdk.Parser{tp},
-			Fields:  []int{fields["pickup_datetime"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "pickup_year",
-			Mapper:  pdk.YearMapper{},
-			Parsers: []pdk.Parser{tp},
-			Fields:  []int{fields["pickup_datetime"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "drop_time",
-			Mapper:  pdk.TimeOfDayMapper{Res: 48},
-			Parsers: []pdk.Parser{tp},
-			Fields:  []int{fields["dropoff_datetime"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "drop_day",
-			Mapper:  pdk.DayOfWeekMapper{},
-			Parsers: []pdk.Parser{tp},
-			Fields:  []int{fields["dropoff_datetime"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "drop_mday",
-			Mapper:  pdk.DayOfMonthMapper{},
-			Parsers: []pdk.Parser{tp},
-			Fields:  []int{fields["pickup_datetime"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "drop_month",
-			Mapper:  pdk.MonthMapper{},
-			Parsers: []pdk.Parser{tp},
-			Fields:  []int{fields["dropoff_datetime"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "drop_year",
-			Mapper:  pdk.YearMapper{},
-			Parsers: []pdk.Parser{tp},
-			Fields:  []int{fields["dropoff_datetime"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "dist_miles", // note "_miles" is a unit annotation
-			Mapper:  lfm,
-			Parsers: []pdk.Parser{pdk.FloatParser{}},
-			Fields:  []int{fields["trip_distance"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "duration_minutes",
-			Mapper:  durm,
-			Parsers: []pdk.Parser{tp, tp},
-			Fields:  []int{fields["pickup_datetime"], fields["dropoff_datetime"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "speed_mph",
-			Mapper:  speedm,
-			Parsers: []pdk.Parser{tp, tp, pdk.FloatParser{}},
-			Fields:  []int{fields["pickup_datetime"], fields["dropoff_datetime"], fields["trip_distance"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "pickup_grid_id",
-			Mapper:  gm,
-			Parsers: []pdk.Parser{pdk.FloatParser{}, pdk.FloatParser{}},
-			Fields:  []int{fields["pickup_longitude"], fields["pickup_latitude"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "drop_grid_id",
-			Mapper:  gm,
-			Parsers: []pdk.Parser{pdk.FloatParser{}, pdk.FloatParser{}},
-			Fields:  []int{fields["dropoff_longitude"], fields["dropoff_latitude"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "pickup_elevation",
-			Mapper:  gfm,
-			Parsers: []pdk.Parser{pdk.FloatParser{}, pdk.FloatParser{}},
-			Fields:  []int{fields["pickup_longitude"], fields["pickup_latitude"]},
-		},
-		pdk.ColumnMapper{
-			Field:   "drop_elevation",
-			Mapper:  gfm,
-			Parsers: []pdk.Parser{pdk.FloatParser{}, pdk.FloatParser{}},
-			Fields:  []int{fields["dropoff_longitude"], fields["dropoff_latitude"]},
-		},
-	}
-
-	return bms
-}
-
 func (m *Main) addBytes(n int) {
 	m.bytesLock.Lock()
 	m.totalBytes += int64(n)
@@ -644,48 +422,12 @@ func (c *counter) Get() (ret int64) {
 	return
 }
 
-/***************
-use case setup
-***************/
-var greenFields = map[string]int{
-	"vendor_id":          0,
-	"pickup_datetime":    1,
-	"dropoff_datetime":   2,
-	"passenger_count":    9,
-	"trip_distance":      10,
-	"pickup_longitude":   5,
-	"pickup_latitude":    6,
-	"ratecode_id":        4,
-	"store_and_fwd_flag": 3,
-	"dropoff_longitude":  7,
-	"dropoff_latitude":   8,
-	"payment_type":       18,
-	"fare_amount":        11,
-	"extra":              12,
-	"mta_tax":            13,
-	"tip_amount":         14,
-	"tolls_amount":       15,
-	"total_amount":       17,
-}
+func MappingRecord(record CsvRecord) error {
+	fields, ok := record.clean()
+	if !ok {
+		return fmt.Errorf("record %s not valid", record)
+	}
 
-var yellowFields = map[string]int{
-	"vendor_id":             0,
-	"pickup_datetime":       1,
-	"dropoff_datetime":      2,
-	"passenger_count":       3,
-	"trip_distance":         4,
-	"pickup_longitude":      5,
-	"pickup_latitude":       6,
-	"ratecode_id":           7,
-	"store_and_fwd_flag":    8,
-	"dropoff_longitude":     9,
-	"dropoff_latitude":      10,
-	"payment_type":          11,
-	"fare_amount":           12,
-	"extra":                 13,
-	"mta_tax":               14,
-	"tip_amount":            15,
-	"tolls_amount":          16,
-	"total_amount":          18,
-	"improvement_surcharge": 17,
+	log.Printf("DM.fields: %s", fields)
+	return nil
 }

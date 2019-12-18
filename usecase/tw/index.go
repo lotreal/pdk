@@ -33,3 +33,11 @@ func CreateSchema(name string) *gopilosa.Schema {
 
 	return schema
 }
+
+func GetFields() map[string]int {
+	fields := make(map[string]int)
+	for i, v := range GetSchema() {
+		fields[v] = i
+	}
+	return fields
+}
