@@ -6,9 +6,9 @@ import (
 	"github.com/pilosa/pdk/usecase/tw"
 )
 
-// func TestGetBitMappers(t *testing.T) {
-//	t.Log(tw.GetBitMappers())
-// }
+func TestGetBitMappers(t *testing.T) {
+	t.Log(tw.GetBitMappers())
+}
 
 func TestMappingRecord(t *testing.T) {
 	bms := tw.GetBitMappers()

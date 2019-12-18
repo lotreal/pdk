@@ -10,7 +10,7 @@ func TestGetField(t *testing.T) {
 	t.Log(tw.GetFields())
 }
 
-// func TestCreateSchema(t *testing.T) {
-//	schema := tw.CreateSchema("dm")
-//	t.Log(schema)
-// }
+func TestCreateSchema(t *testing.T) {
+	schema := tw.CreateSchema("dm")
+	t.Log(schema)
+}

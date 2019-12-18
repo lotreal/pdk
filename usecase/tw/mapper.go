@@ -11,7 +11,7 @@ var (
 		Func: func(fields ...interface{}) interface{} {
 			i := fields[0].(int64)
 			if i > trim4test {
-				return 0
+				return int64(0)
 			}
 			return i
 		},

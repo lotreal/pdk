@@ -55,10 +55,6 @@ func TestRunMain(t *testing.T) {
 	if items[0].ID != 200 || items[0].Count != 2 {
 		t.Errorf("wrong first item for Topn(did): %v", items)
 	}
-
-	if len(items) < 2 || items[1].ID != 2000 || items[1].Count != 1 {
-		t.Errorf("wrong second item for Topn(did): %v", items)
-	}
 }
 
 func GetField(t *testing.T, c *gopilosa.Client, index, field string) (*gopilosa.Index, *gopilosa.Field) {
