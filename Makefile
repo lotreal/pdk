@@ -1,4 +1,4 @@
-.PHONY: pdk crossbuild install test test-all gometalinter
+.PHONY: pdk crossbuild install test test-all gometalinter tw
 
 PROTOC := $(shell command -v protoc 2>/dev/null)
 VERSION := $(shell git describe --tags 2> /dev/null || echo unknown)
@@ -32,6 +32,10 @@ crossbuild:
 
 install:
 	go install $(LDFLAGS) $(FLAGS) $(CLONE_URL)/cmd/pdk
+
+tw:
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(CLONE_URL)/cmd/pdk
+	mv pdk ~/Entropy/hg2c/pilosa/playground/dm/pdk
 
 gometalinter: vendor
 	GO111MODULE=off gometalinter --vendor --disable-all \
