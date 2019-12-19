@@ -27,8 +27,8 @@ func CreateSchema(name string) *gopilosa.Schema {
 	index := schema.Index(name, gopilosa.OptIndexTrackExistence(false))
 
 	for _, v := range GetSchema() {
-		pdk.NewIntField(index, v, 0, 65535)
-		// pdk.NewRankedField(index, v, 10000)
+		// pdk.NewIntField(index, v, 0, 65535)
+		pdk.NewRankedField(index, v, 10000)
 		log.Printf("create field %s.%s", name, v)
 	}
 

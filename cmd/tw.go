@@ -39,6 +39,7 @@ func NewTwCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	flags.StringVarP(&TwMain.PilosaHost, "pilosa", "p", "localhost:10101", "Pilosa host")
 	flags.StringVarP(&TwMain.Index, "index", "i", TwMain.Index, "Pilosa db to write to")
 	flags.StringVarP(&TwMain.URLFile, "url-file", "f", "urls.txt", "File to get raw data urls from. Urls may be http or local files.")
+	flags.StringVarP(&TwMain.Schema, "schema-file", "s", "test.schema", "File to get raw data Schame.")
 
 	return twCommand
 }
