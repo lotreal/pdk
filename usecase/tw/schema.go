@@ -10,8 +10,10 @@ import (
 	"github.com/pilosa/pdk"
 )
 
-func GetSchema() []string {
-	fileName := "testdata/test.schema"
+func GetSchema(fileName string) []string {
+	// fileName := "test.schema"
+	log.Printf("Import use schema file: %s", fileName)
+
 	fileBytes, err := ioutil.ReadFile(fileName)
 
 	if err != nil {
@@ -22,11 +24,11 @@ func GetSchema() []string {
 	return strings.Split(string(fileBytes), "\n")
 }
 
-func CreateSchema(name string) *gopilosa.Schema {
+func CreateSchema(name string, schemaFile string) *gopilosa.Schema {
 	schema := gopilosa.NewSchema()
 	index := schema.Index(name, gopilosa.OptIndexTrackExistence(false))
 
-	for _, v := range GetSchema() {
+	for _, v := range GetSchema(schemaFile) {
 		// pdk.NewIntField(index, v, 0, 65535)
 		pdk.NewRankedField(index, v, 10000)
 		log.Printf("create field %s.%s", name, v)
@@ -35,9 +37,9 @@ func CreateSchema(name string) *gopilosa.Schema {
 	return schema
 }
 
-func GetFields() map[string]int {
+func GetFields(schemaFile string) map[string]int {
 	fields := make(map[string]int)
-	for i, v := range GetSchema() {
+	for i, v := range GetSchema(schemaFile) {
 		fields[v] = i
 	}
 	return fields

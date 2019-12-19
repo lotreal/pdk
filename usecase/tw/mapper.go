@@ -19,9 +19,9 @@ var (
 	}
 )
 
-func GetBitMappers() []pdk.ColumnMapper {
-	schema := GetSchema()
-	fields := GetFields()
+func GetBitMappers(schemaFile string) []pdk.ColumnMapper {
+	schema := GetSchema(schemaFile)
+	fields := GetFields(schemaFile)
 
 	bms := make([]pdk.ColumnMapper, len(schema))
 

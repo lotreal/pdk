@@ -29,6 +29,7 @@ const (
 type Main struct {
 	PilosaHost       string
 	URLFile          string
+	Schema           string
 	FetchConcurrency int
 	Concurrency      int
 	Index            string
@@ -92,7 +93,7 @@ func (m *Main) Run() error {
 		return err
 	}
 
-	schema := CreateSchema(m.Index)
+	schema := CreateSchema(m.Index, m.Schema)
 
 	m.indexer, err = pdk.SetupPilosa([]string{m.PilosaHost}, m.Index, schema, uint(m.BufferSize))
 	if err != nil {
@@ -111,7 +112,7 @@ func (m *Main) Run() error {
 		close(urls)
 	}()
 
-	m.bms = GetBitMappers()
+	m.bms = GetBitMappers(m.Schema)
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func() {

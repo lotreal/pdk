@@ -7,11 +7,11 @@ import (
 )
 
 func TestGetBitMappers(t *testing.T) {
-	t.Log(tw.GetBitMappers())
+	t.Log(tw.GetBitMappers("testdata/test.schema"))
 }
 
 func TestMappingRecord(t *testing.T) {
-	bms := tw.GetBitMappers()
+	bms := tw.GetBitMappers("testdata/test.schema")
 
 	rec := "100,1000,200"
 	record := tw.CsvRecord{Val: rec, Type: '-'}
