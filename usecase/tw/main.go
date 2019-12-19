@@ -248,7 +248,7 @@ func (m *Main) fetch(urls <-chan string, records chan<- CsvRecord) {
 			m.totalRecs.Add(1)
 			rec := scan.Text()
 			m.addBytes(len(rec))
-			log.Printf("DM.rec: %s", rec)
+			// log.Printf("DM.rec: %s", rec)
 			records <- CsvRecord{Val: rec, Type: '-'}
 		}
 		err := scan.Err()
@@ -330,7 +330,7 @@ func MappingRecord(record CsvRecord, bms []pdk.ColumnMapper) ([]columnField, err
 		return nil, fmt.Errorf("record %s not valid", record.Val)
 	}
 
-	log.Printf("DM.fields: %s", fields)
+	// log.Printf("DM.fields: %s", fields)
 	columnsToSet := make([]columnField, 0)
 
 	for _, bm := range bms {
@@ -357,7 +357,7 @@ func MappingRecord(record CsvRecord, bms []pdk.ColumnMapper) ([]columnField, err
 
 		// map those fields to a slice of IDs
 		ids, err := bm.Mapper.ID(parsed...)
-		log.Printf("DM.ids: %v", ids)
+		// log.Printf("DM.ids: %v", ids)
 		if err != nil {
 			return nil, fmt.Errorf("mapping: bm: %v, err: %v rec: %v", bm, err, record)
 		}
