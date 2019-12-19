@@ -19,7 +19,7 @@ func TestRunMain(t *testing.T) {
 	// run dm import with testdata
 	main := tw.NewMain()
 	main.URLFile = "testdata/urls.txt"
-	main.Schema = "testdata/test.schema"
+	main.SchemaFile = "testdata/test.schema"
 	main.Index = "dm"
 	main.Concurrency = 2
 	main.FetchConcurrency = 3

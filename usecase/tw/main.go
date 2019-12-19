@@ -2,10 +2,8 @@ package tw
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -29,7 +27,7 @@ const (
 type Main struct {
 	PilosaHost       string
 	URLFile          string
-	Schema           string
+	SchemaFile       string
 	FetchConcurrency int
 	Concurrency      int
 	Index            string
@@ -93,7 +91,7 @@ func (m *Main) Run() error {
 		return err
 	}
 
-	schema := CreateSchema(m.Index, m.Schema)
+	schema := CreateSchema(m.Index, m.SchemaFile)
 
 	m.indexer, err = pdk.SetupPilosa([]string{m.PilosaHost}, m.Index, schema, uint(m.BufferSize))
 	if err != nil {
@@ -112,7 +110,7 @@ func (m *Main) Run() error {
 		close(urls)
 	}()
 
-	m.bms = GetBitMappers(m.Schema)
+	m.bms = GetBitMappers(m.SchemaFile)
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func() {
@@ -220,31 +218,8 @@ func (m *Main) fetch(urls <-chan string, records chan<- CsvRecord) {
 			}
 			content = f
 		}
-		var scan *bufio.Scanner
-		if m.UseReadAll {
-			// we're using ReadAll here to ensure that we can read the entire
-			// file/url before we start putting it into Pilosa. Not great for memory
-			// usage or smooth performance, but we want to ensure repeatable results
-			// in the simplest way possible.
-			contentBytes, err := ioutil.ReadAll(content)
-			if err != nil {
-				failedURLs[url]++
-				if failedURLs[url] > 10 {
-					log.Fatalf("Unrecoverable failure while fetching url: %v, err: %v. Could not read fully after 10 tries.", url, err)
-				}
-				continue
-			}
-			err = content.Close()
-			if err != nil {
-				log.Printf("closing %s, err: %v", url, err)
-			}
 
-			buf := bytes.NewBuffer(contentBytes)
-			scan = bufio.NewScanner(buf)
-		} else {
-			scan = bufio.NewScanner(content)
-		}
-
+		scan := bufio.NewScanner(content)
 		for scan.Scan() {
 			m.totalRecs.Add(1)
 			rec := scan.Text()
