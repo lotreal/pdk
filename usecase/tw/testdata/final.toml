@@ -1,0 +1,9 @@
+# uid, session_id, flag, created
+# 100, 8AQwo2P5y8WB1juycL8eXt6j8j13, 1, 1576627205
+
+source_fields = [
+  "uid",
+  "session_id",
+  "flag",
+  "created",
+]

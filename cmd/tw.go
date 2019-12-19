@@ -17,8 +17,8 @@ var TwMain *tw.Main
 func NewTwCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	TwMain = tw.NewMain()
 	twCommand := &cobra.Command{
-		Use:   "tw",
-		Short: "Import tw data to Pilosa.",
+		Use:   "import",
+		Short: "Import custom data to Pilosa.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			start := time.Now()
 			err := TwMain.Run()
@@ -38,11 +38,11 @@ func NewTwCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	flags.BoolVarP(&TwMain.UseReadAll, "use-read-all", "", false, "Setting to true uses much more memory, but ensures that an entire file can be read before beginning to parse it.")
 	flags.StringVarP(&TwMain.PilosaHost, "pilosa", "p", "localhost:10101", "Pilosa host")
 	flags.StringVarP(&TwMain.Index, "index", "i", TwMain.Index, "Pilosa db to write to")
-	flags.StringVarP(&TwMain.URLFile, "url-file", "f", "usecase/tw/urls-short.txt", "File to get raw data urls from. Urls may be http or local files.")
+	flags.StringVarP(&TwMain.URLFile, "url-file", "f", "urls.txt", "File to get raw data urls from. Urls may be http or local files.")
 
 	return twCommand
 }
 
 func init() {
-	subcommandFns["tw"] = NewTwCommand
+	subcommandFns["import"] = NewTwCommand
 }
