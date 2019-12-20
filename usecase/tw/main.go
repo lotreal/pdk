@@ -8,12 +8,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	// for profiling
-	_ "net/http/pprof"
 
 	"github.com/pilosa/pdk"
 	"github.com/pkg/errors"
@@ -36,7 +34,7 @@ type Main struct {
 
 	indexer pdk.Indexer
 	urls    []string
-	bms     []pdk.ColumnMapper
+	// bms     []pdk.ColumnMapper
 
 	nexter pdk.INexter
 
@@ -81,11 +79,6 @@ func NewMain() *Main {
 
 // Run runs the taxi usecase.
 func (m *Main) Run() error {
-	go func() {
-		// ?
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
-
 	err := m.readURLs()
 	if err != nil {
 		return err
@@ -110,7 +103,7 @@ func (m *Main) Run() error {
 		close(urls)
 	}()
 
-	m.bms = GetBitMappers(m.SchemaFile)
+	// m.bms = GetBitMappers(m.SchemaFile)
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func() {
@@ -132,7 +125,7 @@ func (m *Main) Run() error {
 	for i := 0; i < m.Concurrency; i++ {
 		wg2.Add(1)
 		go func(i int) {
-			m.parseMapAndPost(records, i)
+			m.parseMapAndPost(records, m.SchemaFile)
 			wg2.Done()
 		}(i)
 	}
@@ -259,13 +252,11 @@ type valField struct {
 	Field string
 }
 
-func (m *Main) parseMapAndPost(records <-chan CsvRecord, num int) {
+func (m *Main) parseMapAndPost(records <-chan CsvRecord, schemaFile string) {
+	fields := GetFields(schemaFile)
+
 	for record := range records {
-		columnsToSet, _ := MappingRecord(record, m.bms)
-		columnID := m.nexter.Next()
-		for _, bit := range columnsToSet {
-			m.indexer.AddColumn(bit.Field, columnID, bit.Column)
-		}
+		MappingRecord2(m.indexer, record, fields)
 	}
 }
 
@@ -344,4 +335,16 @@ func MappingRecord(record CsvRecord, bms []pdk.ColumnMapper) ([]columnField, err
 	}
 	columnsToSet = append(columnsToSet)
 	return columnsToSet, nil
+}
+
+func MappingRecord2(indexer pdk.Indexer, record CsvRecord, fields map[string]int) {
+	records, _ := record.clean()
+	log.Printf("DM.id=%s", records[1])
+	columnID, _ := strconv.ParseInt(records[1], 10, 64)
+
+	for name, idx := range fields {
+		row, _ := strconv.ParseInt(records[idx], 10, 64)
+		log.Printf("DM.AddColumn(%s, %d, %d)", name, columnID, row)
+		indexer.AddColumn(name, uint64(columnID), uint64(row))
+	}
 }

@@ -18,7 +18,7 @@ func TestRunMain(t *testing.T) {
 
 	// run dm import with testdata
 	main := tw.NewMain()
-	main.URLFile = "testdata/urls.txt"
+	main.URLFile = "testdata/test.urls"
 	main.SchemaFile = "testdata/test.schema"
 	main.Index = "dm"
 	main.Concurrency = 2
@@ -32,20 +32,20 @@ func TestRunMain(t *testing.T) {
 	}
 
 	// query pilosa to ensure consistent results
-	index, didField := GetField(t, client, "dm", "did")
+	index, appIdField := GetField(t, client, "dm", "app_id")
 
-	resp, err := client.Query(index.Count(didField.Row(200)))
+	resp, err := client.Query(index.Count(appIdField.Row(600)))
 	if err != nil {
 		t.Fatalf("count querying: %v", err)
 	}
 	if resp.Result().Count() != 2 {
-		t.Fatalf("did 200 should have 1, but got %d", resp.Result().Count())
+		t.Fatalf("app_id 600 should have 2, but got %d", resp.Result().Count())
 	}
 
 	// The cache needs to be refreshed before querying TopN.
 	client.HttpRequest("POST", "/recalculate-caches", nil, nil)
 
-	resp, err = client.Query(didField.TopN(5))
+	resp, err = client.Query(appIdField.TopN(5))
 	if err != nil {
 		t.Errorf("topn query: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestRunMain(t *testing.T) {
 	if len(items) != 3 {
 		t.Errorf("wrong number of results for Topn(did): %v", items)
 	}
-	if items[0].ID != 200 || items[0].Count != 2 {
+	if items[0].ID != 600 || items[0].Count != 2 {
 		t.Errorf("wrong first item for Topn(did): %v", items)
 	}
 }

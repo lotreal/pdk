@@ -1,4 +1,4 @@
-.PHONY: pdk crossbuild install test test-all gometalinter tw
+.PHONY: pdk crossbuild install test test-all gometalinter devel devel-sh tw
 
 PROTOC := $(shell command -v protoc 2>/dev/null)
 VERSION := $(shell git describe --tags 2> /dev/null || echo unknown)
@@ -35,7 +35,7 @@ install:
 
 tw:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(CLONE_URL)/cmd/pdk
-	mv pdk ~/Entropy/hg2c/pilosa/playground/dm/pdk
+	# mv pdk ~/Entropy/hg2c/pilosa/playground/dm/pdk
 
 gometalinter: vendor
 	GO111MODULE=off gometalinter --vendor --disable-all \
@@ -58,3 +58,11 @@ install-gometalinter:
 	GO111MODULE=off go get -u github.com/alecthomas/gometalinter
 	GO111MODULE=off gometalinter --install
 	GO111MODULE=off go get github.com/remyoudompheng/go-misc/deadcode
+
+devel:
+	docker run --rm --name pilosa-devel -it -v $(GOPATH):/go \
+		-v ~/Entropy/hg2c/pilosa/data:/data \
+		-w /go/src/github.com/pilosa/pdk/ hg2c/pilosa:devel sh
+
+devel-sh:
+	docker exec -it pilosa-devel sh

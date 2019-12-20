@@ -34,12 +34,22 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"net/http"
 	"os"
+
+	// for profiling
+	_ "net/http/pprof"
 
 	"github.com/pilosa/pdk/cmd"
 )
 
 func main() {
+	go func() {
+		// ?
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
 	rootCmd := cmd.NewRootCommand(os.Stdin, os.Stdout, os.Stderr)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)

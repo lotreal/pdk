@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	gopilosa "github.com/pilosa/go-pilosa"
-	"github.com/pilosa/pdk"
 )
 
 func GetSchema(fileName string) []string {
@@ -29,8 +28,8 @@ func CreateSchema(name string, schemaFile string) *gopilosa.Schema {
 	index := schema.Index(name, gopilosa.OptIndexTrackExistence(false))
 
 	for _, v := range GetSchema(schemaFile) {
-		// pdk.NewIntField(index, v, 0, 65535)
-		pdk.NewRankedField(index, v, 10000)
+		index.Field(v, gopilosa.OptFieldTypeSet(gopilosa.CacheTypeRanked, 50000))
+
 		log.Printf("create field %s.%s", name, v)
 	}
 
