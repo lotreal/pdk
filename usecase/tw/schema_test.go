@@ -6,11 +6,9 @@ import (
 	"github.com/pilosa/pdk/usecase/tw"
 )
 
-func TestGetField(t *testing.T) {
-	t.Log(tw.GetFields("testdata/test.schema"))
-}
+var schema = tw.NewSchema("testdata/test.schema")
 
 func TestCreateSchema(t *testing.T) {
-	schema := tw.CreateSchema("dm", "testdata/test.schema")
+	schema := tw.NewPilosaSchema("dm", schema)
 	t.Log(schema)
 }

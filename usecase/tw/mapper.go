@@ -19,18 +19,15 @@ var (
 	}
 )
 
-func GetBitMappers(schemaFile string) []pdk.ColumnMapper {
-	schema := GetSchema(schemaFile)
-	fields := GetFields(schemaFile)
+func GetBitMappers(schema Schema ) []pdk.ColumnMapper {
+	bms := make([]pdk.ColumnMapper, len(schema.CsvFields))
 
-	bms := make([]pdk.ColumnMapper, len(schema))
-
-	for i, v := range schema {
-		bms[i] = pdk.ColumnMapper{
-			Field:   v,
+	for k, v := range schema.CsvFields {
+		bms[v] = pdk.ColumnMapper{
+			Field:   k,
 			Mapper:  dmMapper,
 			Parsers: []pdk.Parser{pdk.IntParser{}},
-			Fields:  []int{fields[v]},
+			Fields:  []int{schema.CsvFields[k]},
 		}
 
 	}

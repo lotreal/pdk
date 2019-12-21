@@ -33,6 +33,7 @@ type Main struct {
 	UseReadAll       bool
 
 	indexer pdk.Indexer
+	schema  Schema
 	urls    []string
 	// bms     []pdk.ColumnMapper
 
@@ -79,14 +80,16 @@ func NewMain() *Main {
 
 // Run runs the taxi usecase.
 func (m *Main) Run() error {
+	m.schema = NewSchema(m.SchemaFile)
+
 	err := m.readURLs()
 	if err != nil {
 		return err
 	}
 
-	schema := CreateSchema(m.Index, m.SchemaFile)
+	gpSchema := NewPilosaSchema(m.Index, m.schema)
 
-	m.indexer, err = pdk.SetupPilosa([]string{m.PilosaHost}, m.Index, schema, uint(m.BufferSize))
+	m.indexer, err = pdk.SetupPilosa([]string{m.PilosaHost}, m.Index, gpSchema, uint(m.BufferSize))
 	if err != nil {
 		return errors.Wrap(err, "setting up indexer")
 	}
@@ -125,7 +128,7 @@ func (m *Main) Run() error {
 	for i := 0; i < m.Concurrency; i++ {
 		wg2.Add(1)
 		go func(i int) {
-			m.parseMapAndPost(records, m.SchemaFile)
+			m.parseMapAndPost(records)
 			wg2.Done()
 		}(i)
 	}
@@ -252,11 +255,9 @@ type valField struct {
 	Field string
 }
 
-func (m *Main) parseMapAndPost(records <-chan CsvRecord, schemaFile string) {
-	fields := GetFields(schemaFile)
-
+func (m *Main) parseMapAndPost(records <-chan CsvRecord) {
 	for record := range records {
-		MappingRecord2(m.indexer, record, fields)
+		MappingRecord2(m.indexer, record, m.schema)
 	}
 }
 
@@ -291,58 +292,12 @@ func (c *counter) Get() (ret int64) {
 	return
 }
 
-func MappingRecord(record CsvRecord, bms []pdk.ColumnMapper) ([]columnField, error) {
-	fields, ok := record.clean()
-	if !ok {
-		return nil, fmt.Errorf("record %s not valid", record.Val)
-	}
-
-	// log.Printf("DM.fields: %s", fields)
-	columnsToSet := make([]columnField, 0)
-
-	for _, bm := range bms {
-		if len(bm.Fields) != len(bm.Parsers) {
-			// TODO if len(bm.Parsers) == 1, use that for all fields
-			log.Fatalf("parse: BitMapper has different number of fields: %v and parsers: %v", bm.Fields, bm.Parsers)
-		}
-
-		// parse fields into a slice `parsed`
-		parsed := make([]interface{}, 0, len(bm.Fields))
-		for n, fieldnum := range bm.Fields {
-			parser := bm.Parsers[n]
-			if fieldnum >= len(fields) {
-				return nil, fmt.Errorf("parse: field index: %v out of range for: %v", fieldnum, fields)
-			}
-			parsedField, err := parser.Parse(fields[fieldnum])
-			if err != nil && fields[fieldnum] == "" {
-				return nil, errors.Wrap(err, "")
-			} else if err != nil {
-				return nil, fmt.Errorf("parsing: field: %v err: %v bm: %v rec: %v", fields[fieldnum], err, bm, record)
-			}
-			parsed = append(parsed, parsedField)
-		}
-
-		// map those fields to a slice of IDs
-		ids, err := bm.Mapper.ID(parsed...)
-		// log.Printf("DM.ids: %v", ids)
-		if err != nil {
-			return nil, fmt.Errorf("mapping: bm: %v, err: %v rec: %v", bm, err, record)
-		}
-
-		for _, id := range ids {
-			columnsToSet = append(columnsToSet, columnField{Column: uint64(id), Field: bm.Field})
-		}
-	}
-	columnsToSet = append(columnsToSet)
-	return columnsToSet, nil
-}
-
-func MappingRecord2(indexer pdk.Indexer, record CsvRecord, fields map[string]int) {
+func MappingRecord2(indexer pdk.Indexer, record CsvRecord, schema Schema) {
 	records, _ := record.clean()
 	// log.Printf("DM.id=%s", records[1])
 	columnID, _ := strconv.ParseInt(records[1], 10, 64)
 
-	for name, idx := range fields {
+	for name, idx := range schema.CsvFields {
 		row, _ := strconv.ParseInt(records[idx], 10, 64)
 		// log.Printf("DM.AddColumn(%s, %d, %d)", name, columnID, row)
 		indexer.AddColumn(name, uint64(columnID), uint64(row))
