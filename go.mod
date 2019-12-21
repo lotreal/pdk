@@ -16,6 +16,7 @@ require (
 	github.com/hashicorp/go-uuid v1.0.1 // indirect
 	github.com/jaffee/commandeer v0.1.0
 	github.com/linkedin/goavro v0.0.0-20181018120728-1beee2a74088
+	github.com/lotreal/pdk v0.8.0 // indirect
 	github.com/miekg/dns v1.1.1 // indirect
 	github.com/mmcloughlin/geohash v0.0.0-20181009053802-f7f2bcae3294
 	github.com/onsi/ginkgo v1.7.0 // indirect

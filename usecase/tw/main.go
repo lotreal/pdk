@@ -339,12 +339,12 @@ func MappingRecord(record CsvRecord, bms []pdk.ColumnMapper) ([]columnField, err
 
 func MappingRecord2(indexer pdk.Indexer, record CsvRecord, fields map[string]int) {
 	records, _ := record.clean()
-	log.Printf("DM.id=%s", records[1])
+	// log.Printf("DM.id=%s", records[1])
 	columnID, _ := strconv.ParseInt(records[1], 10, 64)
 
 	for name, idx := range fields {
 		row, _ := strconv.ParseInt(records[idx], 10, 64)
-		log.Printf("DM.AddColumn(%s, %d, %d)", name, columnID, row)
+		// log.Printf("DM.AddColumn(%s, %d, %d)", name, columnID, row)
 		indexer.AddColumn(name, uint64(columnID), uint64(row))
 	}
 }
