@@ -1,10 +1,8 @@
 package tw
 
 import (
-	"github.com/pilosa/pdk"
 	"io/ioutil"
 	"log"
-	"strconv"
 	"strings"
 
 	gopilosa "github.com/pilosa/go-pilosa"
@@ -12,6 +10,7 @@ import (
 
 type SchemaConfig struct {
 	CsvFields map[string]int
+	CsvFieldsNum int
 }
 
 func NewSchemaConfig(fileName string) SchemaConfig {
@@ -29,7 +28,7 @@ func NewSchemaConfig(fileName string) SchemaConfig {
 		fieldMap[v] = i
 	}
 
-	return SchemaConfig{CsvFields: fieldMap}
+	return SchemaConfig{CsvFields: fieldMap, CsvFieldsNum:len(fields)}
 }
 
 func NewPilosaSchema(name string, schema SchemaConfig) *gopilosa.Schema {
@@ -45,7 +44,6 @@ func NewPilosaSchema(name string, schema SchemaConfig) *gopilosa.Schema {
 }
 
 type CsvRecord struct {
-	Type rune
 	Val  string
 }
 
@@ -55,22 +53,4 @@ func (r CsvRecord) clean() ([]string, bool) {
 	}
 	fields := strings.Split(r.Val, ",")
 	return fields, true
-}
-
-func InsertRecord(indexer pdk.Indexer, record CsvRecord, schema SchemaConfig) {
-	records, _ := record.clean()
-	// log.Printf("DM.id=%s", records[1])
-	columnID, err := strconv.ParseUint(records[1], 10, 64)
-	if err != nil {
-		log.Printf("ColumnID parse (%s) return error: %v", records[1], err)
-	}
-
-	for name, idx := range schema.CsvFields {
-		row, err2 := strconv.ParseInt(records[idx], 10, 64)
-		if err2 != nil {
-			log.Printf("Field parse (%s) return error: %v", records[idx], err)
-		}
-		// log.Printf("DM.AddColumn(%s, %d, %d)", name, columnID, row)
-		indexer.AddColumn(name, uint64(columnID), uint64(row))
-	}
 }

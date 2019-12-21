@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,23 +35,14 @@ type Main struct {
 	indexer pdk.Indexer
 	config  SchemaConfig
 	urls    []string
-	// bms     []pdk.ColumnMapper
 
-	nexter pdk.INexter
-
+	start      time.Time
+	rides      uint64
 	totalBytes int64
 	bytesLock  sync.Mutex
 
 	totalRecs     *counter
 	skippedRecs   *counter
-	nullLocs      *counter
-	badLocs       *counter
-	badSpeeds     *counter
-	badTotalAmnts *counter
-	badDurations  *counter
-	badPassCounts *counter
-	badDist       *counter
-	badUnknowns   *counter
 }
 
 // NewMain returns a new instance of Main with default values.
@@ -59,19 +51,11 @@ func NewMain() *Main {
 		Concurrency:      1,
 		FetchConcurrency: 1,
 		Index:            INDEX,
-		nexter:           pdk.NewNexter(),
+		rides:            0,
 		urls:             make([]string, 0),
 
 		totalRecs:     &counter{},
 		skippedRecs:   &counter{},
-		nullLocs:      &counter{},
-		badLocs:       &counter{},
-		badSpeeds:     &counter{},
-		badTotalAmnts: &counter{},
-		badDurations:  &counter{},
-		badPassCounts: &counter{},
-		badDist:       &counter{},
-		badUnknowns:   &counter{},
 	}
 
 	return m
@@ -93,11 +77,11 @@ func (m *Main) Run() error {
 		return errors.Wrap(err, "setting up indexer")
 	}
 
-	ticker := m.printStats()
-
 	urls := make(chan string, 100)
 	records := make(chan CsvRecord, 10000)
 
+	m.start = time.Now()
+	ticker := m.statsTicker()
 	go func() {
 		for _, url := range m.urls {
 			urls <- url
@@ -105,12 +89,11 @@ func (m *Main) Run() error {
 		close(urls)
 	}()
 
-	// m.bms = GetBitMappers(m.SchemaFile)
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	go func() {
 		for range c {
-			log.Printf("Rides: %d, Bytes: %s", m.nexter.Last(), pdk.Bytes(m.bytesProcessed()))
+			m.printStats()
 			os.Exit(0)
 		}
 	}()
@@ -136,11 +119,9 @@ func (m *Main) Run() error {
 	wg2.Wait()
 	err = m.indexer.Close()
 	ticker.Stop()
-	// print stats one last time
-	bytes := m.bytesProcessed()
 
-	log.Printf("Rides: %d, Bytes: %s, Records: %v", m.nexter.Last(), pdk.Bytes(bytes), m.totalRecs.Get())
-	log.Printf("Skipped: %v, badLocs: %v, nullLocs: %v, badSpeeds: %v, badTotalAmnts: %v, badDurations: %v, badUnknowns: %v, badPassCounts: %v, badDist: %v", m.skippedRecs.Get(), m.badLocs.Get(), m.nullLocs.Get(), m.badSpeeds.Get(), m.badTotalAmnts.Get(), m.badDurations.Get(), m.badUnknowns.Get(), m.badPassCounts.Get(), m.badDist.Get())
+	// print stats one last time
+	m.printStats()
 	return errors.Wrap(err, "closing indexer")
 }
 
@@ -160,18 +141,22 @@ func (m *Main) readURLs() error {
 	return errors.Wrap(err, "scanning url file")
 }
 
-func (m *Main) printStats() *time.Ticker {
+func (m *Main) statsTicker() *time.Ticker {
 	t := time.NewTicker(time.Second * 10)
-	start := time.Now()
 	go func() {
 		for range t.C {
-			duration := time.Since(start)
-			bytes := m.bytesProcessed()
-			log.Printf("Rides: %d, Bytes: %s, Records: %v, Duration: %v, Rate: %v/s", m.nexter.Last(), pdk.Bytes(bytes), m.totalRecs.Get(), duration, pdk.Bytes(float64(bytes)/duration.Seconds()))
-			log.Printf("Skipped: %v, badLocs: %v, nullLocs: %v, badSpeeds: %v, badTotalAmnts: %v, badDurations: %v, badUnknowns: %v, badPassCounts: %v, badDist: %v", m.skippedRecs.Get(), m.badLocs.Get(), m.nullLocs.Get(), m.badSpeeds.Get(), m.badTotalAmnts.Get(), m.badDurations.Get(), m.badUnknowns.Get(), m.badPassCounts.Get(), m.badDist.Get())
+			m.printStats()
 		}
 	}()
 	return t
+}
+
+func (m *Main) printStats() {
+	duration := time.Since(m.start)
+	bytes := m.bytesProcessed()
+	log.Printf("Rides: %d, Bytes: %s, Records: %v, Skipped: %v, Duration: %v, Rate: %v/s",
+		m.rides, pdk.Bytes(bytes), m.totalRecs.Get(), m.skippedRecs.Get(),
+		duration, pdk.Bytes(float64(bytes)/duration.Seconds()))
 }
 
 // getNextURL fetches the next url from the channel, or if it is emtpy, gets a
@@ -220,7 +205,7 @@ func (m *Main) fetch(urls <-chan string, records chan<- CsvRecord) {
 			rec := scan.Text()
 			m.addBytes(len(rec))
 			// log.Printf("DM.rec: %s", rec)
-			records <- CsvRecord{Val: rec, Type: '-'}
+			records <- CsvRecord{Val: rec}
 		}
 		err := scan.Err()
 		if err != nil {
@@ -232,7 +217,35 @@ func (m *Main) fetch(urls <-chan string, records chan<- CsvRecord) {
 
 func (m *Main) parseMapAndPost(records <-chan CsvRecord) {
 	for record := range records {
-		InsertRecord(m.indexer, record, m.config)
+		m.insertRecord(record)
+	}
+}
+
+
+func (m *Main) insertRecord(record CsvRecord) {
+	records, _ := record.clean()
+	if m.config.CsvFieldsNum != len(records) {
+		log.Printf("Skipped: record fields num %d != config fields num %v", m.config.CsvFieldsNum, len(records))
+		m.skippedRecs.Add(1)
+		return
+	}
+	// log.Printf("DM.id=%s", records[1])
+	columnID, err := strconv.ParseUint(records[1], 10, 64)
+	if err != nil {
+		log.Printf("Skipped: parse ColumnID (%s) return error (%v)", records[1], err)
+		m.skippedRecs.Add(1)
+		return
+	}
+	m.rides = columnID
+	for name, idx := range m.config.CsvFields {
+		row, err2 := strconv.ParseInt(records[idx], 10, 64)
+		if err2 != nil {
+			log.Printf("Skipped: parse records[%d]=(%s) return error (%v)", idx, records[idx], err)
+			m.skippedRecs.Add(1)
+			return
+		}
+		// log.Printf("DM.AddColumn(%s, %d, %d)", name, columnID, row)
+		m.indexer.AddColumn(name, uint64(columnID), uint64(row))
 	}
 }
 
