@@ -111,13 +111,13 @@ func TestRunMainDm(t *testing.T) {
 func GetField(t *testing.T, c *gopilosa.Client, index, field string) (*gopilosa.Index, *gopilosa.Field) {
 	schema, err := c.Schema()
 	if err != nil {
-		t.Fatalf("getting schema: %v", err)
+		t.Fatalf("getting config: %v", err)
 	}
 	idx := schema.Index(index)
 	fram := idx.Field(field)
 	err = c.SyncSchema(schema)
 	if err != nil {
-		t.Fatalf("syncing schema: %v", err)
+		t.Fatalf("syncing config: %v", err)
 	}
 
 	return idx, fram

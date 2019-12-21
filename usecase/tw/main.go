@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,7 +32,7 @@ type Main struct {
 	UseReadAll       bool
 
 	indexer pdk.Indexer
-	schema  Schema
+	config  SchemaConfig
 	urls    []string
 	// bms     []pdk.ColumnMapper
 
@@ -80,14 +79,14 @@ func NewMain() *Main {
 
 // Run runs the taxi usecase.
 func (m *Main) Run() error {
-	m.schema = NewSchema(m.SchemaFile)
+	m.config = NewSchemaConfig(m.SchemaFile)
 
 	err := m.readURLs()
 	if err != nil {
 		return err
 	}
 
-	gpSchema := NewPilosaSchema(m.Index, m.schema)
+	gpSchema := NewPilosaSchema(m.Index, m.config)
 
 	m.indexer, err = pdk.SetupPilosa([]string{m.PilosaHost}, m.Index, gpSchema, uint(m.BufferSize))
 	if err != nil {
@@ -147,7 +146,7 @@ func (m *Main) Run() error {
 
 func (m *Main) readURLs() error {
 	if m.URLFile == "" {
-		return fmt.Errorf("Need to specify a URL File")
+		return fmt.Errorf("need to specify a url file")
 	}
 	f, err := os.Open(m.URLFile)
 	if err != nil {
@@ -231,33 +230,9 @@ func (m *Main) fetch(urls <-chan string, records chan<- CsvRecord) {
 	}
 }
 
-type CsvRecord struct {
-	Type rune
-	Val  string
-}
-
-func (r CsvRecord) clean() ([]string, bool) {
-	if len(r.Val) == 0 {
-		return nil, false
-	}
-	fields := strings.Split(r.Val, ",")
-	return fields, true
-}
-
-type columnField struct {
-	Column uint64
-	Field  string
-}
-
-type valField struct {
-	Val   int64
-	Frame string
-	Field string
-}
-
 func (m *Main) parseMapAndPost(records <-chan CsvRecord) {
 	for record := range records {
-		MappingRecord2(m.indexer, record, m.schema)
+		InsertRecord(m.indexer, record, m.config)
 	}
 }
 
@@ -290,16 +265,4 @@ func (c *counter) Get() (ret int64) {
 	ret = c.num
 	c.lock.Unlock()
 	return
-}
-
-func MappingRecord2(indexer pdk.Indexer, record CsvRecord, schema Schema) {
-	records, _ := record.clean()
-	// log.Printf("DM.id=%s", records[1])
-	columnID, _ := strconv.ParseInt(records[1], 10, 64)
-
-	for name, idx := range schema.CsvFields {
-		row, _ := strconv.ParseInt(records[idx], 10, 64)
-		// log.Printf("DM.AddColumn(%s, %d, %d)", name, columnID, row)
-		indexer.AddColumn(name, uint64(columnID), uint64(row))
-	}
 }

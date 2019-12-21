@@ -19,7 +19,7 @@ var (
 	}
 )
 
-func GetBitMappers(schema Schema ) []pdk.ColumnMapper {
+func GetBitMappers(schema SchemaConfig) []pdk.ColumnMapper {
 	bms := make([]pdk.ColumnMapper, len(schema.CsvFields))
 
 	for k, v := range schema.CsvFields {
