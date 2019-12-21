@@ -44,7 +44,6 @@ func NewPilosaSchema(name string, schema SchemaConfig) *gopilosa.Schema {
 	return gpSchema
 }
 
-
 type CsvRecord struct {
 	Type rune
 	Val  string
@@ -61,10 +60,16 @@ func (r CsvRecord) clean() ([]string, bool) {
 func InsertRecord(indexer pdk.Indexer, record CsvRecord, schema SchemaConfig) {
 	records, _ := record.clean()
 	// log.Printf("DM.id=%s", records[1])
-	columnID, _ := strconv.ParseInt(records[1], 10, 64)
+	columnID, err := strconv.ParseUint(records[1], 10, 64)
+	if err != nil {
+		log.Printf("ColumnID parse (%s) return error: %v", records[1], err)
+	}
 
 	for name, idx := range schema.CsvFields {
-		row, _ := strconv.ParseInt(records[idx], 10, 64)
+		row, err2 := strconv.ParseInt(records[idx], 10, 64)
+		if err2 != nil {
+			log.Printf("Field parse (%s) return error: %v", records[idx], err)
+		}
 		// log.Printf("DM.AddColumn(%s, %d, %d)", name, columnID, row)
 		indexer.AddColumn(name, uint64(columnID), uint64(row))
 	}
