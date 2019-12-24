@@ -1,7 +1,7 @@
 .PHONY: pdk crossbuild install test test-all gometalinter devel devel-sh tw
 
 PROTOC := $(shell command -v protoc 2>/dev/null)
-VERSION := $(shell git describe --tags 2> /dev/null || echo v0.8.1)
+VERSION ?= $(shell git describe --tags 2> /dev/null || echo v0.8.0-devel)
 IDENTIFIER := $(VERSION)-$(GOOS)-$(GOARCH)
 CLONE_URL=github.com/pilosa/pdk
 PKGS := $(shell cd $(GOPATH)/src/$(CLONE_URL); go list ./... | grep -v vendor)
